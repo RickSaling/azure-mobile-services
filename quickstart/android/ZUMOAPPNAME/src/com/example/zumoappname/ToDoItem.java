@@ -15,7 +15,7 @@ public class ToDoItem {
 	 * Item Id
 	 */
 	@com.google.gson.annotations.SerializedName("id")
-	private int mId;
+	private String mId;
 
 	/**
 	 * Indicates if the item is completed
@@ -43,7 +43,7 @@ public class ToDoItem {
 	 * @param id
 	 *            The item id
 	 */
-	public ToDoItem(String text, int id) {
+	public ToDoItem(String text, String id) {
 		this.setText(text);
 		this.setId(id);
 	}
@@ -68,7 +68,7 @@ public class ToDoItem {
 	/**
 	 * Returns the item id
 	 */
-	public int getId() {
+	public String getId() {
 		return mId;
 	}
 
@@ -78,7 +78,7 @@ public class ToDoItem {
 	 * @param id
 	 *            id to set
 	 */
-	public final void setId(int id) {
+	public final void setId(String id) {
 		mId = id;
 	}
 
@@ -98,6 +98,6 @@ public class ToDoItem {
 
 	@Override
 	public boolean equals(Object o) {
-		return o instanceof ToDoItem && ((ToDoItem) o).mId == mId;
+		return o instanceof ToDoItem && ((ToDoItem) o).mText == mText;
 	}
 }

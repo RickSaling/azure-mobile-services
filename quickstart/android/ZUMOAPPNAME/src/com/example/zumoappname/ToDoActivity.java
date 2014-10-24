@@ -1,12 +1,10 @@
 package com.example.zumoappname;
 
-import static com.microsoft.windowsazure.mobileservices.MobileServiceQueryOperations.*;
-
 import java.net.MalformedURLException;
-import java.util.List;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -15,15 +13,16 @@ import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
+
 import com.microsoft.windowsazure.mobileservices.MobileServiceClient;
-import com.microsoft.windowsazure.mobileservices.MobileServiceTable;
-import com.microsoft.windowsazure.mobileservices.NextServiceFilterCallback;
-import com.microsoft.windowsazure.mobileservices.ServiceFilter;
-import com.microsoft.windowsazure.mobileservices.ServiceFilterRequest;
-import com.microsoft.windowsazure.mobileservices.ServiceFilterResponse;
-import com.microsoft.windowsazure.mobileservices.ServiceFilterResponseCallback;
-import com.microsoft.windowsazure.mobileservices.TableOperationCallback;
-import com.microsoft.windowsazure.mobileservices.TableQueryCallback;
+import com.microsoft.windowsazure.mobileservices.MobileServiceList;
+import com.microsoft.windowsazure.mobileservices.http.NextServiceFilterCallback;
+import com.microsoft.windowsazure.mobileservices.http.ServiceFilter;
+import com.microsoft.windowsazure.mobileservices.http.ServiceFilterRequest;
+import com.microsoft.windowsazure.mobileservices.http.ServiceFilterResponse;
+import com.microsoft.windowsazure.mobileservices.table.MobileServiceTable;
 
 public class ToDoActivity extends Activity {
 
@@ -118,7 +117,7 @@ public class ToDoActivity extends Activity {
 	 * @param item
 	 *            The item to mark
 	 */
-	public void checkItem(ToDoItem item) {
+	public void checkItem(final ToDoItem item) {
 		if (mClient == null) {
 			return;
 		}
@@ -126,19 +125,26 @@ public class ToDoActivity extends Activity {
 		// Set the item as completed and update it in the table
 		item.setComplete(true);
 		
-		mToDoTable.update(item, new TableOperationCallback<ToDoItem>() {
+		new AsyncTask<Void, Void, Void>() {
 
-			public void onCompleted(ToDoItem entity, Exception exception, ServiceFilterResponse response) {
-				if (exception == null) {
-					if (entity.isComplete()) {
-						mAdapter.remove(entity);
-					}
-				} else {
-					createAndShowDialog(exception, "Error");
-				}
-			}
-
-		});
+	            @Override
+	            protected Void doInBackground(Void... params) {
+	                try {
+	                    mToDoTable.update(item).get();
+	                    runOnUiThread(new Runnable() {
+	                        public void run() {
+	                            if (item.isComplete()) {
+	                                mAdapter.remove(item);
+	                            }
+	                            refreshItemsFromTable();
+	                        }
+	                    });
+	                } catch (Exception exception) {
+	                    createAndShowDialog(exception, "Error");
+	                }
+	                return null;
+	            }
+	        }.execute();
 	}
 
 	/**
@@ -153,26 +159,31 @@ public class ToDoActivity extends Activity {
 		}
 
 		// Create a new item
-		ToDoItem item = new ToDoItem();
+		final ToDoItem item = new ToDoItem();
 
 		item.setText(mTextNewToDo.getText().toString());
 		item.setComplete(false);
 		
 		// Insert the new item
-		mToDoTable.insert(item, new TableOperationCallback<ToDoItem>() {
+    	        new AsyncTask<Void, Void, Void>() {
 
-			public void onCompleted(ToDoItem entity, Exception exception, ServiceFilterResponse response) {
-				
-				if (exception == null) {
-					if (!entity.isComplete()) {
-						mAdapter.add(entity);
-					}
-				} else {
-					createAndShowDialog(exception, "Error");
-				}
-
-			}
-		});
+	            @Override
+	            protected Void doInBackground(Void... params) {
+	                try {
+	                    mToDoTable.insert(item).get();
+	                    if (!item.isComplete()) {
+	                        runOnUiThread(new Runnable() {
+	                            public void run() {
+	                                mAdapter.add(item);
+	                            }
+	                        });
+	                    }
+	                } catch (Exception exception) {
+	                    createAndShowDialog(exception, "Error");
+	                }
+	                return null;
+	            }
+	        }.execute();
 
 		mTextNewToDo.setText("");
 	}
@@ -184,21 +195,29 @@ public class ToDoActivity extends Activity {
 
 		// Get the items that weren't marked as completed and add them in the
 		// adapter
-		mToDoTable.where().field("complete").eq(val(false)).execute(new TableQueryCallback<ToDoItem>() {
+	        new AsyncTask<Void, Void, Void>() {
 
-			public void onCompleted(List<ToDoItem> result, int count, Exception exception, ServiceFilterResponse response) {
-				if (exception == null) {
-					mAdapter.clear();
+	            @Override
+	            protected Void doInBackground(Void... params) {
+	                try {
+	                    final MobileServiceList<ToDoItem> result = mToDoTable.where().field("complete").eq(false).execute().get();
+	                    runOnUiThread(new Runnable() {
 
-					for (ToDoItem item : result) {
-						mAdapter.add(item);
-					}
+	                        @Override
+	                        public void run() {
+	                            mAdapter.clear();
 
-				} else {
-					createAndShowDialog(exception, "Error");
-				}
-			}
-		});
+	                            for (ToDoItem item : result) {
+	                                mAdapter.add(item);
+	                            }
+	                        }
+	                    });
+	                } catch (Exception exception) {
+	                    createAndShowDialog(exception, "Error");
+	                }
+	                return null;
+	            }
+	        }.execute();
 	}
 
 	/**
@@ -234,33 +253,39 @@ public class ToDoActivity extends Activity {
 	}
 	
 	private class ProgressFilter implements ServiceFilter {
-		
-		@Override
-		public void handleRequest(ServiceFilterRequest request, NextServiceFilterCallback nextServiceFilterCallback,
-				final ServiceFilterResponseCallback responseCallback) {
-			runOnUiThread(new Runnable() {
 
-				@Override
-				public void run() {
-					if (mProgressBar != null) mProgressBar.setVisibility(ProgressBar.VISIBLE);
-				}
-			});
-			
-			nextServiceFilterCallback.onNext(request, new ServiceFilterResponseCallback() {
-				
-				@Override
-				public void onResponse(ServiceFilterResponse response, Exception exception) {
-					runOnUiThread(new Runnable() {
+        @Override
+        public ListenableFuture<ServiceFilterResponse> handleRequest(
+                ServiceFilterRequest request, NextServiceFilterCallback next) {
 
-						@Override
-						public void run() {
-							if (mProgressBar != null) mProgressBar.setVisibility(ProgressBar.GONE);
-						}
-					});
-					
-					if (responseCallback != null)  responseCallback.onResponse(response, exception);
-				}
-			});
-		}
-	}
+            runOnUiThread(new Runnable() {
+
+                @Override
+                public void run() {
+                    if (mProgressBar != null) mProgressBar.setVisibility(ProgressBar.VISIBLE);
+                }
+            });
+
+            SettableFuture<ServiceFilterResponse> result = SettableFuture.create();
+            try {
+                ServiceFilterResponse response = next.onNext(request).get();
+                result.set(response);
+            } catch (Exception exc) {
+                result.setException(exc);
+            }
+
+          dismissProgressBar();
+          return result;
+        }
+
+      private void dismissProgressBar() {
+          runOnUiThread(new Runnable() {
+
+              @Override
+              public void run() {
+                  if (mProgressBar != null) mProgressBar.setVisibility(ProgressBar.GONE);
+              }
+          });
+        }
+    }
 }
